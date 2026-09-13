@@ -1,932 +1,941 @@
+/* ============================================================
+   Domofon Visuals  |  by DQMJRKA
+   Вставь этот код в консоль (F12 -> Console) и нажми Enter
+   Ключ доступа: cfgdqmjrka
+   ============================================================ */
 (function () {
-'use strict';
+  'use strict';
 
-/* ============================================================
-   DOMOFON CHEAT  |  v1.0
-   ============================================================ */
-if (window.__DFC__) { try { window.__DFC__.destroy(); } catch(e){} }
+  /* ================== КОНФИГ ================== */
+  const ACCESS_KEY  = 'cfgdqmjrka';
+  const AUTHOR_CODE = 'DQMJRKA';
+  const LS_KEY      = 'domofon_visuals_state_v1';
 
-const KEY              = 'cfgdqmjrka';
-const DEFAULT_PASS     = 'Kojab777';
-const DEFAULT_AUTHCODE = 'DQMJRKA';
-const DELAY            = 500; // 0.5s
-const LS_KEY           = 'dfc_config_v1';
+  // если скрипт уже запущен — выключаем
+  if (window.__DOMOFON_VISUALS__) {
+    try { window.__DOMOFON_VISUALS__.destroy(); } catch (e) {}
+    return;
+  }
 
-/* ---------- helpers ---------- */
-const $  = (s, r) => (r || document).querySelector(s);
-const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+  /* ================== ДАННЫЕ ДЛЯ AUTO ================== */
+  // ⚠️ Отредактируй списки под свои кейсы / домофоны
+  const AUTO_GROUPS = [
+    { title: 'Кейсы',     items: ['Обычный кейс', 'Редкий кейс', 'Эпический кейс', 'Легендарный кейс'] },
+    { title: 'Домофоны',  items: ['Домофон Raid vizit', 'Домофон Classic', 'Домофон Neon', 'Домофон Cyber'] }
+  ];
 
-async function waitFor(sel, timeout = 6000) {
-    const t0 = Date.now();
-    while (Date.now() - t0 < timeout) {
-        const el = document.querySelector(sel);
-        if (el) return el;
-        await sleep(40);
-    }
-    return null;
-}
+  /* ================== ДАННЫЕ ДЛЯ RP ================== */
+  const RP_DOMOFONS = [
+    'Domofon Raid vizit',
+    'Domofon Classic',
+    'Domofon Neon',
+    'Domofon Cyber',
+    'Domofon Gold'
+  ];
 
-function setVal(el, value) {
-    if (!el) return;
-    const proto = el.tagName === 'TEXTAREA'
-        ? HTMLTextAreaElement.prototype
-        : HTMLInputElement.prototype;
-    const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
-    setter.call(el, value);
-    el.dispatchEvent(new Event('input',  { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-}
+  /* ================== СОСТОЯНИЕ ================== */
+  const DEFAULT_STATE = {
+    snow:      { enabled: false, perSecond: 25 },
+    watermark: { enabled: true, showFps: true, showTime: true },
+    auto:      { enabled: false, items: {} },
+    rp:        { selected: null, textures: {} }
+  };
 
-function randLetters(n = 4) {
-    const a = 'abcdefghijklmnopqrstuvwxyz';
-    let s = '';
-    for (let i = 0; i < n; i++) s += a[(Math.random() * a.length) | 0];
-    return s;
-}
-function randDigits(n = 4) {
-    let s = '';
-    for (let i = 0; i < n; i++) s += (Math.random() * 10) | 0;
-    return s;
-}
-function genNick(pattern) {
-    return (pattern || 'dq_%s%n')
-        .replace(/%s/g, randLetters(4))
-        .replace(/%n/g, randDigits(4));
-}
-
-/* ---------- default lists (auto + fallback) ---------- */
-const DEFAULT_CASES = [
-    'Starter Case', 'Common Case', 'Rare Case', 'Epic Case',
-    'Legendary Case', 'Mythic Case', 'Domofon Case', 'Creator Case'
-];
-const DEFAULT_DOMOFONS = [
-    'Domofon Raid vizit', 'Domofon Standard', 'Domofon Elite',
-    'Domofon Premium', 'Domofon VIP', 'Domofon Prime',
-    'Domofon Legend', 'Domofon Gold'
-];
-
-/* ---------- state ---------- */
-const state = {
-    autoUnban: false,
-    autoUnbanTimer: null,
-    running: false,
-    stopFlag: false,
-    cfg: {
-        autoReg:      { count: 5,  pattern: 'dq_%s%n' },
-        autoRegCode:  { count: 5,  pattern: 'dq_%s%n', code: DEFAULT_AUTHCODE },
-        autoCase:     { caseName: DEFAULT_CASES[0], perBatch: 1, total: 10 },
-        rp:           {} // domofon -> dataURL
-    }
-};
-
-/* load saved */
-try {
+  let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+  try {
     const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
-    if (saved) Object.assign(state.cfg, saved);
-} catch (e) {}
+    if (saved) state = deepMerge(JSON.parse(JSON.stringify(DEFAULT_STATE)), saved);
+  } catch (e) {}
 
-function saveLocal() {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(state.cfg)); } catch (e) {}
-}
+  function deepMerge(base, add) {
+    for (const k in add) {
+      if (add[k] && typeof add[k] === 'object' && !Array.isArray(add[k])) {
+        base[k] = deepMerge(base[k] || {}, add[k]);
+      } else if (add[k] !== undefined) base[k] = add[k];
+    }
+    return base;
+  }
 
-/* ============================================================
-   CSS
-   ============================================================ */
-const CSS = `
-#dfc-root, #dfc-root * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
-#dfc-splash {
-    position: fixed; inset: 0; z-index: 2147483646;
-    background: radial-gradient(circle at 50% 40%, #1a1030 0%, #05050a 70%);
-    display: flex; align-items: center; justify-content: center;
-    animation: dfcFade .3s ease;
-}
-@keyframes dfcFade { from { opacity: 0 } to { opacity: 1 } }
-.dfc-splash-box {
-    text-align: center; padding: 40px 50px; border-radius: 18px;
-    background: rgba(15,15,25,.85);
-    border: 1px solid rgba(140,90,255,.35);
-    box-shadow: 0 0 60px rgba(140,90,255,.35), inset 0 0 30px rgba(140,90,255,.08);
-    min-width: 360px;
-}
-.dfc-title {
-    font-size: 34px; font-weight: 900; letter-spacing: 3px;
-    background: linear-gradient(90deg, #b389ff, #7a4dff, #4dc9ff);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-    margin-bottom: 6px;
-    text-shadow: 0 0 30px rgba(140,90,255,.5);
-    animation: dfcGlow 2.4s ease-in-out infinite alternate;
-}
-@keyframes dfcGlow {
-    from { filter: drop-shadow(0 0 4px rgba(140,90,255,.5)); }
-    to   { filter: drop-shadow(0 0 18px rgba(140,90,255,.9)); }
-}
-.dfc-sub { font-size: 12px; color: #8a8aa8; letter-spacing: 4px; margin-bottom: 26px; }
-.dfc-splash-box input {
-    width: 100%; padding: 12px 14px; border-radius: 10px;
-    background: #0d0d16; border: 1px solid #2a2a44; color: #e8e8ff;
-    outline: none; font-size: 14px; letter-spacing: 2px; text-align: center;
-}
-.dfc-splash-box input:focus { border-color: #7a4dff; box-shadow: 0 0 0 2px rgba(122,77,255,.25); }
-.dfc-splash-box button {
-    margin-top: 14px; width: 100%; padding: 12px;
-    border: none; border-radius: 10px; cursor: pointer;
-    background: linear-gradient(90deg, #7a4dff, #4dc9ff);
-    color: #fff; font-weight: 700; letter-spacing: 1px;
-    transition: transform .15s ease, box-shadow .15s ease;
-}
-.dfc-splash-box button:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(122,77,255,.4); }
-.dfc-err { color: #ff5577; font-size: 12px; margin-top: 10px; min-height: 14px; }
-.dfc-shake { animation: dfcShake .35s; }
-@keyframes dfcShake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+  function save() {
+    const copy = JSON.parse(JSON.stringify(state));
+    copy.rp.textures = {}; // dataURL не пишем в localStorage
+    try { localStorage.setItem(LS_KEY, JSON.stringify(copy)); } catch (e) {}
+  }
 
-/* panel */
-#dfc-panel {
-    position: fixed; top: 60px; right: 30px; width: 400px;
-    background: linear-gradient(180deg, #101021 0%, #0a0a15 100%);
-    border: 1px solid rgba(122,77,255,.35);
-    border-radius: 14px; z-index: 2147483645;
-    box-shadow: 0 20px 60px rgba(0,0,0,.7), 0 0 40px rgba(122,77,255,.15);
-    color: #d9d9f2; user-select: none; overflow: hidden;
-    animation: dfcFade .25s ease;
-}
-.dfc-head {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 14px; cursor: move;
-    background: linear-gradient(90deg, rgba(122,77,255,.22), rgba(77,201,255,.10));
-    border-bottom: 1px solid rgba(122,77,255,.25);
-}
-.dfc-head h2 {
-    margin: 0; font-size: 15px; letter-spacing: 2px; font-weight: 800;
-    background: linear-gradient(90deg, #b389ff, #4dc9ff);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.dfc-head-btns button {
-    background: transparent; border: 1px solid #2a2a44; color: #9a9ac0;
-    width: 26px; height: 26px; border-radius: 7px; cursor: pointer; margin-left: 6px;
-    transition: .15s;
-}
-.dfc-head-btns button:hover { background: #7a4dff; color: #fff; border-color: #7a4dff; }
+  /* ================== СТИЛИ ================== */
+  const css = `
+  #dv-app, #dv-app *{box-sizing:border-box;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;}
+  #dv-app{
+    --bg:#0a0c11; --panel:#11141c; --panel2:#161a24;
+    --line:rgba(255,255,255,.07); --txt:#e9edf6; --mut:#7f889c;
+    --acc:#7c5cff; --acc2:#22d3ee; --ok:#22c55e; --err:#ef4444;
+  }
+  .dv-hidden{display:none !important;}
 
-.dfc-tabs { display: flex; padding: 8px 10px 0; gap: 6px; }
-.dfc-tab {
-    flex: 1; padding: 9px 0; text-align: center; cursor: pointer;
-    border-radius: 9px 9px 0 0; font-size: 13px; font-weight: 700;
-    color: #7a7a9c; letter-spacing: 1px;
-    background: #12121f; border: 1px solid transparent; border-bottom: none;
-    transition: .18s;
-}
-.dfc-tab:hover { color: #c2c2e8; }
-.dfc-tab.active {
-    color: #fff;
-    background: linear-gradient(180deg, rgba(122,77,255,.35), rgba(122,77,255,.08));
-    border-color: rgba(122,77,255,.45);
-    box-shadow: inset 0 2px 0 #7a4dff;
-}
+  /* ---------- OVERLAY ---------- */
+  .dv-overlay{
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 25%, #151b2d 0%, #06080d 65%);
+    z-index:2147483000;opacity:1;transition:opacity .45s ease;
+    overflow:hidden;
+  }
+  .dv-overlay:before{
+    content:'';position:absolute;width:900px;height:900px;border-radius:50%;
+    background:radial-gradient(circle, rgba(124,92,255,.16), transparent 62%);
+    animation:dvFloat 9s ease-in-out infinite;
+  }
+  @keyframes dvFloat{0%,100%{transform:translate(-14%,-14%) scale(1)}50%{transform:translate(14%,10%) scale(1.15)}}
+  .dv-overlay.dv-hide{opacity:0;pointer-events:none;visibility:hidden;}
 
-.dfc-body { padding: 14px; min-height: 240px; max-height: 520px; overflow-y: auto; }
-.dfc-body::-webkit-scrollbar { width: 8px; }
-.dfc-body::-webkit-scrollbar-thumb { background: #2a2a44; border-radius: 8px; }
+  /* ---------- ЛОГО ---------- */
+  .dv-logo{
+    width:88px;height:88px;border-radius:26px;position:relative;
+    background:linear-gradient(135deg,#7c5cff,#22d3ee);
+    display:flex;align-items:center;justify-content:center;
+    font-size:30px;font-weight:900;color:#fff;letter-spacing:-1px;
+    box-shadow:0 0 46px rgba(124,92,255,.6), inset 0 2px 0 rgba(255,255,255,.25);
+    animation:dvPulse 2.4s ease-in-out infinite;
+  }
+  .dv-logo:after{
+    content:'';position:absolute;inset:-11px;border-radius:34px;
+    border:2px solid transparent;border-top-color:#7c5cff;border-right-color:#22d3ee;
+    animation:dvSpin 1.4s linear infinite;
+  }
+  .dv-logo-sm{width:66px;height:66px;border-radius:20px;font-size:22px;animation:none;}
+  .dv-logo-sm:after{inset:-8px;border-radius:26px;animation:dvSpin 2.4s linear infinite;}
+  @keyframes dvSpin{to{transform:rotate(360deg)}}
+  @keyframes dvPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 
-.dfc-pane { display: none; }
-.dfc-pane.active { display: block; animation: dfcFade .2s ease; }
+  /* ---------- ЗАГРУЗКА ---------- */
+  .dv-loader{display:flex;flex-direction:column;align-items:center;gap:14px;z-index:2;}
+  .dv-logo-title{
+    margin-top:6px;font-size:28px;font-weight:800;letter-spacing:1px;
+    background:linear-gradient(90deg,#fff,#a78bfa,#22d3ee);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .dv-logo-sub{font-size:12px;color:#7f889c;letter-spacing:2px;text-transform:uppercase;}
+  .dv-progress{width:300px;height:6px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;margin-top:10px;}
+  .dv-progress-fill{height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,#7c5cff,#22d3ee);box-shadow:0 0 16px rgba(124,92,255,.9);transition:width .22s ease;}
+  .dv-percent{font-size:12px;color:#7f889c;font-weight:700;letter-spacing:1px;}
 
-.dfc-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px;
-    background: #12121f; border: 1px solid #1e1e33; border-radius: 10px; margin-bottom: 10px; }
-.dfc-row .lbl { font-size: 13px; font-weight: 600; }
-.dfc-row .desc { font-size: 11px; color: #6a6a8c; margin-top: 2px; }
+  /* ---------- КАРТОЧКИ ---------- */
+  .dv-card{
+    width:380px;max-width:92vw;padding:34px 28px 28px;border-radius:22px;z-index:2;
+    background:linear-gradient(180deg, rgba(20,24,34,.96), rgba(11,13,19,.98));
+    border:1px solid rgba(255,255,255,.08);
+    box-shadow:0 40px 90px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.06);
+    display:flex;flex-direction:column;align-items:center;text-align:center;
+    animation:dvCardIn .45s cubic-bezier(.2,.9,.3,1.25);
+  }
+  @keyframes dvCardIn{from{opacity:0;transform:translateY(18px) scale(.95)}to{opacity:1;transform:none}}
+  .dv-h1{font-size:24px;font-weight:800;margin:16px 0 4px;letter-spacing:.5px;
+    background:linear-gradient(90deg,#fff,#a78bfa,#22d3ee);
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  .dv-mut{font-size:13px;color:#7f889c;margin:0 0 18px;line-height:1.55;}
+  .dv-mut b{color:#a78bfa;}
 
-/* toggle */
-.dfc-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
-.dfc-switch input { display: none; }
-.dfc-switch label { position: absolute; inset: 0; background: #2a2a44; border-radius: 24px; cursor: pointer; transition: .2s; }
-.dfc-switch label::after { content:''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
-    background: #777; border-radius: 50%; transition: .2s; }
-.dfc-switch input:checked + label { background: linear-gradient(90deg,#7a4dff,#4dc9ff); }
-.dfc-switch input:checked + label::after { left: 23px; background: #fff; }
+  /* ---------- ИНПУТ / КНОПКИ ---------- */
+  .dv-input{
+    width:100%;padding:13px 15px;border-radius:12px;font-size:13px;font-weight:600;
+    background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);
+    color:#e9edf6;outline:none;transition:.22s;letter-spacing:.5px;
+  }
+  .dv-input::placeholder{color:#5c6478;}
+  .dv-input:focus{border-color:#7c5cff;background:rgba(124,92,255,.08);box-shadow:0 0 0 3px rgba(124,92,255,.16);}
+  .dv-input.dv-shake{animation:dvShake .4s;border-color:#ef4444;}
+  @keyframes dvShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
 
-/* big buttons */
-.dfc-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
-.dfc-btn {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 16px; border-radius: 12px; cursor: pointer; border: 1px solid #23233c;
-    background: linear-gradient(135deg, #15152a, #0f0f1e);
-    color: #dcdcff; font-weight: 700; font-size: 13px; letter-spacing: .5px;
-    transition: .18s; user-select: none;
-}
-.dfc-btn:hover { transform: translateY(-1px); border-color: rgba(122,77,255,.5); box-shadow: 0 8px 20px rgba(122,77,255,.18); }
-.dfc-btn .sub { font-size: 10px; color: #6a6a8c; font-weight: 500; letter-spacing: 0; margin-top: 2px;}
-.dfc-btn .state { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #23233c; color: #9a9ac0; }
-.dfc-btn.running { border-color: #ff5577; }
-.dfc-btn.running .state { background: #3a1020; color: #ff5577; }
-.dfc-btn.stop { background: linear-gradient(135deg,#3a1020,#200a12); border-color: #ff5577; color: #ff9ab0; }
+  .dv-btn{
+    border:0;border-radius:12px;padding:13px 20px;font-size:13px;font-weight:800;
+    letter-spacing:.6px;cursor:pointer;transition:.22s;color:#fff;
+    background:rgba(255,255,255,.07);
+  }
+  .dv-btn:hover{background:rgba(255,255,255,.13);transform:translateY(-1px);}
+  .dv-btn:active{transform:translateY(0);}
+  .dv-btn-primary{background:linear-gradient(135deg,#7c5cff,#22d3ee);box-shadow:0 12px 30px rgba(124,92,255,.4);}
+  .dv-btn-primary:hover{box-shadow:0 16px 38px rgba(124,92,255,.58);}
+  .dv-btn-block{width:100%;margin-top:12px;}
+  .dv-btn-sm{padding:9px 13px;font-size:11px;border-radius:10px;}
+  .dv-link{background:none;border:0;color:#5c6478;font-size:12px;margin-top:12px;cursor:pointer;transition:.2s;}
+  .dv-link:hover{color:#a78bfa;}
 
-.dfc-note { font-size: 11px; color: #6a6a8c; text-align: center; margin-top: 8px; }
+  .dv-err{font-size:12px;color:#ef4444;height:16px;margin-top:8px;font-weight:700;}
+  .dv-msg{font-size:12px;margin-top:10px;font-weight:700;min-height:16px;}
+  .dv-msg-ok{color:#22c55e;} .dv-msg-err{color:#ef4444;}
 
-/* RP */
-.dfc-rp-list { max-height: 340px; overflow-y: auto; padding-right: 4px; }
-.dfc-rp-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 10px; background: #12121f; border: 1px solid #1e1e33;
-    border-radius: 10px; margin-bottom: 8px;
-}
-.dfc-rp-item .name { flex: 1; font-size: 12px; font-weight: 600; }
-.dfc-rp-item .preview { width: 34px; height: 34px; border-radius: 8px; background: #0a0a15;
-    border: 1px solid #23233c; object-fit: cover; flex-shrink: 0; }
-.dfc-mini {
-    padding: 6px 10px; border-radius: 8px; border: 1px solid #2a2a44;
-    background: #181828; color: #c2c2e8; font-size: 11px; cursor: pointer;
-    transition: .15s; white-space: nowrap;
-}
-.dfc-mini:hover { background: #7a4dff; border-color: #7a4dff; color: #fff; }
-.dfc-mini.danger:hover { background: #ff5577; border-color: #ff5577; }
+  /* ---------- СНЕЖИНКИ ---------- */
+  .dv-snow{position:fixed;inset:0;pointer-events:none;z-index:2147481000;overflow:hidden;}
+  .dv-flake{
+    position:absolute;top:-8vh;line-height:1;will-change:transform;
+    animation-name:dvFall;animation-timing-function:linear;animation-fill-mode:forwards;
+    text-shadow:0 0 10px rgba(180,220,255,.7);
+  }
+  @keyframes dvFall{
+    from{transform:translate3d(0,-10vh,0) rotate(0deg);}
+    to{transform:translate3d(var(--dx),115vh,0) rotate(var(--rot));}
+  }
 
-.dfc-io { display: flex; gap: 8px; margin-top: 12px; }
-.dfc-io .dfc-mini { flex: 1; text-align: center; padding: 10px; }
+  /* ---------- WATERMARK (Dynamic Island) ---------- */
+  .dv-wm{
+    position:fixed;top:14px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:11px;
+    padding:9px 20px;border-radius:99px;
+    background:rgba(10,12,18,.85);
+    border:1px solid rgba(255,255,255,.09);
+    color:#e9edf6;font-size:12.5px;font-weight:700;letter-spacing:.3px;
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    box-shadow:0 12px 40px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.07);
+    z-index:2147482000;user-select:none;cursor:context-menu;
+    transition:transform .35s cubic-bezier(.4,0,.2,1), box-shadow .35s, border-radius .35s;
+    white-space:nowrap;
+  }
+  .dv-wm:hover{transform:translateX(-50%) scale(1.05);border-radius:20px;box-shadow:0 16px 50px rgba(124,92,255,.35);}
+  .dv-wm-dot{width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 10px #22c55e;animation:dvBlink 2s infinite;}
+  @keyframes dvBlink{0%,100%{opacity:1}50%{opacity:.35}}
+  .dv-wm-brand{background:linear-gradient(90deg,#a78bfa,#22d3ee);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800;}
+  .dv-wm-sep{width:1px;height:12px;background:rgba(255,255,255,.18);}
+  .dv-wm-fps{color:#22d3ee;}
+  .dv-wm-time{color:#a78bfa;}
 
-/* modal */
-.dfc-modal {
-    position: fixed; inset: 0; z-index: 2147483647;
-    background: rgba(0,0,0,.65); backdrop-filter: blur(4px);
-    display: flex; align-items: center; justify-content: center;
-    animation: dfcFade .18s ease;
-}
-.dfc-modal-box {
-    width: 340px; background: linear-gradient(180deg,#12121f,#0a0a15);
-    border: 1px solid rgba(122,77,255,.4); border-radius: 14px; padding: 18px;
-    box-shadow: 0 20px 60px rgba(0,0,0,.8);
-    color: #dcdcff;
-}
-.dfc-modal-box h3 {
-    margin: 0 0 14px; font-size: 15px; letter-spacing: 1px;
-    background: linear-gradient(90deg,#b389ff,#4dc9ff);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.dfc-field { margin-bottom: 12px; }
-.dfc-field label { display: block; font-size: 11px; color: #8a8aa8; margin-bottom: 5px; letter-spacing: .5px; }
-.dfc-field input, .dfc-field select {
-    width: 100%; padding: 9px 11px; border-radius: 9px;
-    background: #0a0a15; border: 1px solid #23233c; color: #e8e8ff; font-size: 13px;
-    outline: none; transition: .15s;
-}
-.dfc-field input:focus, .dfc-field select:focus { border-color: #7a4dff; box-shadow: 0 0 0 2px rgba(122,77,255,.2); }
-.dfc-modal-actions { display: flex; gap: 8px; margin-top: 6px; }
-.dfc-modal-actions button {
-    flex: 1; padding: 10px; border-radius: 9px; cursor: pointer;
-    border: 1px solid #2a2a44; background: #181828; color: #c2c2e8;
-    font-weight: 700; font-size: 12px; transition: .15s;
-}
-.dfc-modal-actions button.primary {
-    background: linear-gradient(90deg,#7a4dff,#4dc9ff); border-color: transparent; color: #fff;
-}
-.dfc-modal-actions button:hover { transform: translateY(-1px); }
-`;
+  /* ---------- ОКНО ---------- */
+  .dv-win{
+    position:fixed;top:88px;right:34px;width:404px;max-width:94vw;
+    background:linear-gradient(180deg,#11141c,#0c0f16);
+    border:1px solid rgba(255,255,255,.08);border-radius:18px;
+    box-shadow:0 34px 90px rgba(0,0,0,.75), 0 0 0 1px rgba(124,92,255,.14), inset 0 1px 0 rgba(255,255,255,.05);
+    z-index:2147482500;overflow:hidden;color:#e9edf6;font-size:13px;
+    animation:dvWinIn .38s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes dvWinIn{from{opacity:0;transform:translateY(-16px) scale(.95)}to{opacity:1;transform:none}}
 
-/* ============================================================
-   SPLASH
-   ============================================================ */
-function showSplash() {
-    return new Promise(resolve => {
-        const s = document.createElement('div');
-        s.id = 'dfc-splash';
-        s.innerHTML = `
-            <div class="dfc-splash-box">
-                <div class="dfc-title">DOMOFON CHEAT</div>
-                <div class="dfc-sub">ENTER ACCESS KEY</div>
-                <input type="password" id="dfcKeyInput" placeholder="• • • • • • • • • •" autocomplete="off">
-                <button id="dfcKeyBtn">ВОЙТИ</button>
-                <div class="dfc-err" id="dfcKeyErr"></div>
+  .dv-head{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:13px 14px;background:rgba(255,255,255,.025);
+    border-bottom:1px solid rgba(255,255,255,.06);cursor:move;user-select:none;
+  }
+  .dv-brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:13px;letter-spacing:.4px;}
+  .dv-brand .dv-dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,#7c5cff,#22d3ee);box-shadow:0 0 12px rgba(124,92,255,.9);}
+  .dv-head-actions{display:flex;gap:6px;}
+  .dv-icon-btn{
+    width:28px;height:28px;border-radius:8px;border:0;cursor:pointer;
+    background:rgba(255,255,255,.06);color:#9aa3b8;font-size:13px;
+    display:flex;align-items:center;justify-content:center;transition:.2s;padding:0;
+  }
+  .dv-icon-btn:hover{background:rgba(124,92,255,.28);color:#fff;}
+  .dv-icon-btn.dv-close:hover{background:rgba(239,68,68,.85);}
+
+  .dv-tabs{display:flex;gap:6px;padding:11px 12px 0;}
+  .dv-tab{
+    flex:1;padding:9px 0;border:0;border-radius:10px;cursor:pointer;
+    background:rgba(255,255,255,.04);color:#7f889c;font-weight:800;font-size:11.5px;
+    letter-spacing:.6px;transition:.22s;text-transform:uppercase;
+  }
+  .dv-tab:hover{background:rgba(255,255,255,.09);color:#e9edf6;}
+  .dv-tab.dv-active{background:linear-gradient(135deg,#7c5cff,#22d3ee);color:#fff;box-shadow:0 8px 22px rgba(124,92,255,.38);}
+
+  .dv-body{padding:14px;max-height:62vh;overflow-y:auto;}
+  .dv-body::-webkit-scrollbar{width:6px;}
+  .dv-body::-webkit-scrollbar-thumb{background:rgba(124,92,255,.45);border-radius:99px;}
+  .dv-body::-webkit-scrollbar-track{background:transparent;}
+
+  .dv-section{margin-bottom:16px;}
+  .dv-section:last-child{margin-bottom:0;}
+  .dv-section-title{
+    font-size:10.5px;font-weight:900;letter-spacing:1.6px;text-transform:uppercase;
+    color:#7c5cff;margin:0 0 10px 3px;
+  }
+
+  .dv-row{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:12px 14px;border-radius:12px;margin-bottom:8px;
+    background:#161a24;border:1px solid rgba(255,255,255,.06);
+    transition:.22s;cursor:context-menu;
+  }
+  .dv-row:hover{border-color:rgba(124,92,255,.5);background:#1a1f2d;transform:translateX(2px);}
+  .dv-row-name{font-weight:700;font-size:13px;}
+  .dv-row-desc{font-size:11px;color:#7f889c;margin-top:3px;}
+  .dv-row-desc b{color:#22d3ee;}
+
+  .dv-switch{position:relative;display:inline-block;width:44px;height:24px;flex:0 0 auto;}
+  .dv-switch input{opacity:0;width:0;height:0;}
+  .dv-slider{position:absolute;inset:0;background:rgba(255,255,255,.13);border-radius:99px;transition:.25s;cursor:pointer;}
+  .dv-slider:before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.25s;}
+  .dv-switch input:checked + .dv-slider{background:linear-gradient(90deg,#7c5cff,#22d3ee);}
+  .dv-switch input:checked + .dv-slider:before{transform:translateX(20px);}
+
+  .dv-sub-row{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:9px 12px;border-radius:10px;margin-bottom:6px;
+    background:rgba(255,255,255,.028);border:1px solid rgba(255,255,255,.05);
+    font-size:12.5px;font-weight:600;transition:.2s;
+  }
+  .dv-sub-row:hover{background:rgba(255,255,255,.06);border-color:rgba(124,92,255,.3);}
+  .dv-check{width:16px;height:16px;accent-color:#7c5cff;cursor:pointer;}
+
+  /* ---------- RP ---------- */
+  .dv-rp-item{
+    display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:12px;
+    background:#161a24;border:1px solid rgba(255,255,255,.06);margin-bottom:8px;
+    transition:.22s;cursor:pointer;
+  }
+  .dv-rp-item:hover{border-color:rgba(124,92,255,.45);background:#1a1f2d;}
+  .dv-rp-item.dv-rp-active{border-color:#7c5cff;background:rgba(124,92,255,.12);box-shadow:0 0 0 1px rgba(124,92,255,.3);}
+  .dv-rp-thumb{
+    width:44px;height:44px;border-radius:10px;flex:0 0 auto;overflow:hidden;
+    background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;
+    font-size:19px;border:1px solid rgba(255,255,255,.07);
+  }
+  .dv-rp-thumb img{width:100%;height:100%;object-fit:cover;}
+  .dv-rp-meta{flex:1;min-width:0;}
+  .dv-rp-name{font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .dv-rp-sub{font-size:10.5px;color:#7f889c;margin-top:3px;}
+
+  /* ---------- МОДАЛКИ ---------- */
+  .dv-modal-wrap{
+    position:fixed;inset:0;z-index:2147483200;display:flex;align-items:center;justify-content:center;
+    background:rgba(4,6,10,.72);backdrop-filter:blur(5px);animation:dvFade .22s ease;
+  }
+  @keyframes dvFade{from{opacity:0}to{opacity:1}}
+  .dv-modal{
+    width:392px;max-width:92vw;border-radius:18px;overflow:hidden;
+    background:linear-gradient(180deg,#141824,#0c0f16);
+    border:1px solid rgba(255,255,255,.09);
+    box-shadow:0 40px 90px rgba(0,0,0,.8);
+    animation:dvCardIn .3s cubic-bezier(.2,.9,.3,1.25);
+    color:#e9edf6;
+  }
+  .dv-modal-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:13px 15px;border-bottom:1px solid rgba(255,255,255,.07);
+    font-weight:800;font-size:13px;letter-spacing:.4px;
+    background:linear-gradient(90deg, rgba(124,92,255,.16), transparent);
+  }
+  .dv-modal-body{padding:16px 16px 18px;}
+  .dv-modal-body h3{margin:0 0 4px;font-size:15px;font-weight:800;}
+  .dv-field{margin-bottom:12px;}
+  .dv-field label{display:block;font-size:11.5px;color:#7f889c;margin-bottom:8px;font-weight:700;}
+  .dv-field label b{color:#22d3ee;font-size:13px;}
+  .dv-range{width:100%;accent-color:#7c5cff;cursor:pointer;}
+  .dv-hint{font-size:11px;color:#5c6478;line-height:1.5;margin-top:6px;}
+
+  /* ---------- TOAST ---------- */
+  .dv-toast{
+    position:fixed;bottom:26px;right:26px;z-index:2147483600;
+    padding:12px 18px;border-radius:12px;font-size:12.5px;font-weight:700;color:#fff;
+    background:linear-gradient(135deg,#7c5cff,#22d3ee);
+    box-shadow:0 16px 40px rgba(124,92,255,.5);
+    opacity:0;transform:translateY(14px);transition:.28s cubic-bezier(.2,.9,.3,1.3);
+    pointer-events:none;letter-spacing:.3px;
+  }
+  .dv-toast.dv-toast-in{opacity:1;transform:translateY(0);}
+  .dv-toast.dv-toast-err{background:linear-gradient(135deg,#ef4444,#f97316);box-shadow:0 16px 40px rgba(239,68,68,.5);}
+  `;
+
+  /* ================== РАЗМЕТКА ================== */
+  const root = document.createElement('div');
+  root.id = 'dv-app';
+  root.innerHTML = `
+  <style>${css}</style>
+
+  <!-- ЗАГРУЗКА -->
+  <div class="dv-overlay" id="dvLoader">
+    <div class="dv-loader">
+      <div class="dv-logo">DV</div>
+      <div class="dv-logo-title">Domofon Visuals</div>
+      <div class="dv-logo-sub" id="dvLoadSub">Инициализация…</div>
+      <div class="dv-progress"><div class="dv-progress-fill" id="dvProgressFill"></div></div>
+      <div class="dv-percent" id="dvPercent">0%</div>
+    </div>
+  </div>
+
+  <!-- КЛЮЧ -->
+  <div class="dv-overlay dv-hide" id="dvKeyScreen">
+    <div class="dv-card">
+      <div class="dv-logo dv-logo-sm">DV</div>
+      <div class="dv-h1">Domofon Visuals</div>
+      <p class="dv-mut">Введите ключ доступа, чтобы продолжить</p>
+      <input type="text" class="dv-input" id="dvKeyInput" placeholder="КЛЮЧ ДОСТУПА" autocomplete="off" spellcheck="false">
+      <div class="dv-err" id="dvKeyErr"></div>
+      <button class="dv-btn dv-btn-primary dv-btn-block" id="dvKeyBtn">ВОЙТИ</button>
+    </div>
+  </div>
+
+  <!-- ПОДДЕРЖКА -->
+  <div class="dv-overlay dv-hide" id="dvSupportScreen">
+    <div class="dv-card">
+      <div class="dv-logo dv-logo-sm">❤</div>
+      <div class="dv-h1">Domofon Visuals</div>
+      <p class="dv-mut">Чтобы играть с визуалами —<br>поддержите автора <b>DQMJRKA</b></p>
+      <button class="dv-btn dv-btn-primary dv-btn-block" id="dvSupportBtn">Поддержать</button>
+      <button class="dv-link" id="dvSkipBtn">Пропустить</button>
+    </div>
+  </div>
+
+  <!-- СНЕГ -->
+  <div class="dv-snow" id="dvSnow"></div>
+
+  <!-- WATERMARK -->
+  <div class="dv-wm dv-hidden" id="dvWatermark">
+    <span class="dv-wm-dot"></span>
+    <span class="dv-wm-brand">DVisuals.ttdq.pro</span>
+    <span class="dv-wm-sep" id="dvSep1"></span>
+    <span class="dv-wm-time" id="dvWmTime">Time 12:34</span>
+    <span class="dv-wm-sep" id="dvSep2"></span>
+    <span class="dv-wm-fps" id="dvWmFps">FPS 123</span>
+  </div>
+
+  <!-- ОСНОВНОЕ ОКНО -->
+  <div class="dv-win dv-hidden" id="dvWin">
+    <div class="dv-head" id="dvHead">
+      <div class="dv-brand"><span class="dv-dot"></span> Domofon Visuals</div>
+      <div class="dv-head-actions">
+        <button class="dv-icon-btn" id="dvCreatorBtn" title="Креаторам ⭐">⭐</button>
+        <button class="dv-icon-btn" id="dvSaveCfg" title="Сохранить конфиг">💾</button>
+        <button class="dv-icon-btn" id="dvLoadCfg" title="Загрузить конфиг">📂</button>
+        <button class="dv-icon-btn dv-close" id="dvClose" title="Закрыть">✕</button>
+      </div>
+    </div>
+
+    <div class="dv-tabs">
+      <button class="dv-tab dv-active" data-tab="utils">Utils</button>
+      <button class="dv-tab" data-tab="auto">Auto</button>
+      <button class="dv-tab" data-tab="rp">RP</button>
+    </div>
+
+    <div class="dv-body">
+      <!-- UTILS -->
+      <div class="dv-page" data-page="utils">
+        <div class="dv-section">
+          <div class="dv-section-title">Visuals</div>
+
+          <div class="dv-row" id="dvSnowRow">
+            <div>
+              <div class="dv-row-name">Снежинки</div>
+              <div class="dv-row-desc">ПКМ — настройки · <b id="dvSnowInfo">25/сек</b></div>
             </div>
-        `;
-        document.body.appendChild(s);
+            <label class="dv-switch"><input type="checkbox" id="dvSnowToggle"><span class="dv-slider"></span></label>
+          </div>
 
-        const input = $('#dfcKeyInput', s);
-        const err   = $('#dfcKeyErr', s);
-        const box   = $('.dfc-splash-box', s);
-        input.focus();
-
-        function tryKey() {
-            if (input.value.trim() === KEY) {
-                s.style.transition = 'opacity .25s';
-                s.style.opacity = '0';
-                setTimeout(() => { s.remove(); resolve(true); }, 260);
-            } else {
-                err.textContent = 'Неверный ключ доступа';
-                box.classList.remove('dfc-shake');
-                void box.offsetWidth;
-                box.classList.add('dfc-shake');
-                input.value = '';
-                input.focus();
-            }
-        }
-        $('#dfcKeyBtn', s).addEventListener('click', tryKey);
-        input.addEventListener('keydown', e => { if (e.key === 'Enter') tryKey(); });
-    });
-}
-
-/* ============================================================
-   PANEL
-   ============================================================ */
-function buildPanel() {
-    const root = document.createElement('div');
-    root.id = 'dfc-root';
-    root.innerHTML = `
-        <div id="dfc-panel">
-            <div class="dfc-head" id="dfcHead">
-                <h2>DOMOFON CHEAT</h2>
-                <div class="dfc-head-btns">
-                    <button id="dfcMin" title="Свернуть">—</button>
-                    <button id="dfcClose" title="Закрыть">✕</button>
-                </div>
+          <div class="dv-row" id="dvWmRow">
+            <div>
+              <div class="dv-row-name">WaterMark</div>
+              <div class="dv-row-desc">ПКМ — настройки · Dynamic Island</div>
             </div>
-            <div class="dfc-tabs">
-                <div class="dfc-tab active" data-tab="utils">Utils</div>
-                <div class="dfc-tab" data-tab="auto">Auto</div>
-                <div class="dfc-tab" data-tab="rp">RP</div>
-            </div>
-            <div class="dfc-body">
-
-                <!-- UTILS -->
-                <div class="dfc-pane active" data-pane="utils">
-                    <div class="dfc-row">
-                        <div>
-                            <div class="lbl">Auto UnBan</div>
-                            <div class="desc">Каждые 3 секунды удаляет окно блокировки</div>
-                        </div>
-                        <div class="dfc-switch">
-                            <input type="checkbox" id="dfcUnban">
-                            <label for="dfcUnban"></label>
-                        </div>
-                    </div>
-                    <div class="dfc-note">ПКМ по кнопкам Auto — открыть настройки</div>
-                </div>
-
-                <!-- AUTO -->
-                <div class="dfc-pane" data-pane="auto">
-                    <div class="dfc-grid">
-                        <div class="dfc-btn" data-action="autoreg">
-                            <div>
-                                <div>AutoReg</div>
-                                <div class="sub">Регистрация аккаунтов</div>
-                            </div>
-                            <div class="state">5</div>
-                        </div>
-                        <div class="dfc-btn" data-action="autoregcode">
-                            <div>
-                                <div>AutoReg + Code</div>
-                                <div class="sub">Регистрация + код автора</div>
-                            </div>
-                            <div class="state">5</div>
-                        </div>
-                        <div class="dfc-btn" data-action="autocase">
-                            <div>
-                                <div>AutoCase</div>
-                                <div class="sub">Автооткрытие кейса</div>
-                            </div>
-                            <div class="state">×1</div>
-                        </div>
-                    </div>
-                    <div class="dfc-note">Задержка действий: 0.5 сек</div>
-                </div>
-
-                <!-- RP -->
-                <div class="dfc-pane" data-pane="rp">
-                    <div class="dfc-rp-list" id="dfcRpList"></div>
-                    <div class="dfc-io">
-                        <button class="dfc-mini" id="dfcSaveCfg">💾 Сохранить конфиг</button>
-                        <button class="dfc-mini" id="dfcLoadCfg">📂 Загрузить конфиг</button>
-                    </div>
-                    <input type="file" id="dfcFileTex" accept="image/*" style="display:none">
-                    <input type="file" id="dfcFileCfg" accept="application/json,.json" style="display:none">
-                </div>
-
-            </div>
+            <label class="dv-switch"><input type="checkbox" id="dvWmToggle"><span class="dv-slider"></span></label>
+          </div>
         </div>
-    `;
-    document.body.appendChild(root);
+      </div>
 
-    /* ---------- tab switching ---------- */
-    $$('.dfc-tab', root).forEach(t => {
-        t.addEventListener('click', () => {
-            $$('.dfc-tab', root).forEach(x => x.classList.remove('active'));
-            $$('.dfc-pane', root).forEach(x => x.classList.remove('active'));
-            t.classList.add('active');
-            $(`.dfc-pane[data-pane="${t.dataset.tab}"]`, root).classList.add('active');
-        });
-    });
-
-    /* ---------- dragging ---------- */
-    (function makeDraggable() {
-        const head = $('#dfcHead', root);
-        const panel = $('#dfc-panel', root);
-        let dragging = false, ox = 0, oy = 0;
-        head.addEventListener('mousedown', e => {
-            if (e.target.tagName === 'BUTTON') return;
-            dragging = true;
-            const r = panel.getBoundingClientRect();
-            ox = e.clientX - r.left; oy = e.clientY - r.top;
-            panel.style.right = 'auto';
-            panel.style.left = r.left + 'px';
-            panel.style.top  = r.top  + 'px';
-        });
-        window.addEventListener('mousemove', e => {
-            if (!dragging) return;
-            panel.style.left = (e.clientX - ox) + 'px';
-            panel.style.top  = (e.clientY - oy) + 'px';
-        });
-        window.addEventListener('mouseup', () => dragging = false);
-    })();
-
-    /* ---------- minimize / close ---------- */
-    $('#dfcMin', root).addEventListener('click', () => {
-        const body = $('.dfc-body', root);
-        body.style.display = body.style.display === 'none' ? '' : 'none';
-    });
-    $('#dfcClose', root).addEventListener('click', () => destroy());
-
-    /* ---------- Auto UnBan ---------- */
-    const unban = $('#dfcUnban', root);
-    unban.addEventListener('change', () => {
-        state.autoUnban = unban.checked;
-        if (state.autoUnban) startUnban(); else stopUnban();
-    });
-
-    /* ---------- Auto buttons ---------- */
-    $$('.dfc-btn[data-action]', root).forEach(btn => {
-        btn.addEventListener('click', e => {
-            if (e.button !== 0) return;
-            handleAuto(btn.dataset.action, btn);
-        });
-        btn.addEventListener('contextmenu', e => {
-            e.preventDefault();
-            openSettings(btn.dataset.action, btn);
-        });
-    });
-
-    /* ---------- RP ---------- */
-    renderRP(root);
-    $('#dfcSaveCfg', root).addEventListener('click', saveConfigFile);
-    $('#dfcLoadCfg', root).addEventListener('click', () => $('#dfcFileCfg', root).click());
-
-    $('#dfcFileCfg', root).addEventListener('change', e => {
-        const f = e.target.files[0]; if (!f) return;
-        const r = new FileReader();
-        r.onload = () => {
-            try {
-                const data = JSON.parse(r.result);
-                Object.assign(state.cfg, data);
-                saveLocal();
-                refreshButtonStates(root);
-                renderRP(root);
-                toast('Конфиг загружен');
-            } catch (err) { toast('Ошибка загрузки конфига', true); }
-        };
-        r.readAsText(f);
-        e.target.value = '';
-    });
-
-    $('#dfcFileTex', root).addEventListener('change', e => {
-        const f = e.target.files[0]; if (!f) return;
-        const dom = e.target.dataset.domofon;
-        const r = new FileReader();
-        r.onload = () => {
-            state.cfg.rp[dom] = r.result;
-            saveLocal();
-            renderRP(root);
-            toast('Текстура загружена: ' + dom);
-        };
-        r.readAsDataURL(f);
-        e.target.value = '';
-    });
-
-    refreshButtonStates(root);
-    return root;
-}
-
-/* ============================================================
-   AUTO UNBAN
-   ============================================================ */
-function startUnban() {
-    stopUnban();
-    state.autoUnbanTimer = setInterval(() => {
-        const ov = document.getElementById('banScreenOverlay');
-        if (ov) {
-            ov.style.display = 'none';
-            ov.remove();
-            console.log('%c[DFC] Ban screen removed', 'color:#b389ff');
-        }
-    }, 3000);
-}
-function stopUnban() {
-    if (state.autoUnbanTimer) clearInterval(state.autoUnbanTimer);
-    state.autoUnbanTimer = null;
-}
-
-/* ============================================================
-   AUTO HANDLERS
-   ============================================================ */
-async function handleAuto(action, btn) {
-    if (state.running) {
-        state.stopFlag = true;
-        btn.classList.remove('running');
-        return;
-    }
-    const stateEl = $('.state', btn);
-    btn.classList.add('running');
-    stateEl.textContent = 'STOP';
-    state.running = true;
-    state.stopFlag = false;
-
-    try {
-        if (action === 'autoreg')     await runAutoReg(false, btn, stateEl);
-        if (action === 'autoregcode') await runAutoReg(true,  btn, stateEl);
-        if (action === 'autocase')    await runAutoCase(btn, stateEl);
-    } catch (e) {
-        console.error('[DFC]', e);
-    } finally {
-        state.running = false;
-        state.stopFlag = false;
-        btn.classList.remove('running');
-        refreshButtonStates(document);
-    }
-}
-
-async function runAutoReg(withCode, btn, stateEl) {
-    const c = withCode ? state.cfg.autoRegCode : state.cfg.autoReg;
-    const total = c.count;
-
-    for (let i = 1; i <= total; i++) {
-        if (state.stopFlag) break;
-        stateEl.textContent = `${i}/${total}`;
-
-        const nick = genNick(c.pattern);
-
-        // 1. open profile
-        const openBtn = await waitFor('#openProfileBtn');
-        if (!openBtn) throw new Error('openProfileBtn not found');
-        openBtn.click();
-        await sleep(DELAY);
-
-        // 2. fill login & password
-        const login = await waitFor('#authLoginInput');
-        const pass  = await waitFor('#authPassInput');
-        if (!login || !pass) throw new Error('auth inputs not found');
-        setVal(login, nick);
-        setVal(pass, DEFAULT_PASS);
-        await sleep(120);
-
-        // 3. register
-        const regBtn = await waitFor('#registerSubmitBtn');
-        if (!regBtn) throw new Error('registerSubmitBtn not found');
-        regBtn.click();
-        await sleep(DELAY);
-
-        // 4. creator tab + code
-        if (withCode) {
-            const creatorTab = await waitFor('[data-tab="creator"]');
-            if (creatorTab) creatorTab.click();
-            await sleep(DELAY);
-
-            const codeInput = await waitFor('#authorCodeInput');
-            if (codeInput) {
-                setVal(codeInput, c.code || DEFAULT_AUTHCODE);
-                await sleep(80);
-                const submit = await waitFor('#submitAuthorCodeBtn');
-                if (submit) submit.click();
-            }
-            await sleep(DELAY);
-        }
-
-        // 5. open profile again
-        const openBtn2 = await waitFor('#openProfileBtn');
-        if (openBtn2) openBtn2.click();
-        await sleep(DELAY);
-
-        // 6. logout
-        const logout = await waitFor('#logoutBtn');
-        if (logout) logout.click();
-        await sleep(DELAY);
-
-        console.log(`%c[DFC] Аккаунт ${i}/${total}: ${nick} / ${DEFAULT_PASS}`, 'color:#4dc9ff');
-    }
-    toast('AutoReg завершён');
-}
-
-/* -------- AutoCase (best-effort generic) -------- */
-async function runAutoCase(btn, stateEl) {
-    const c = state.cfg.autoCase;
-    let opened = 0;
-
-    for (let round = 0; opened < c.total; round++) {
-        if (state.stopFlag) break;
-
-        // find & click case card
-        const card = findCaseElement(c.caseName);
-        if (card) {
-            card.click();
-            await sleep(DELAY);
-        } else {
-            console.warn('[DFC] Кейс не найден:', c.caseName);
-        }
-
-        for (let b = 0; b < c.perBatch && opened < c.total; b++) {
-            if (state.stopFlag) break;
-            const openBtn = findOpenButton();
-            if (openBtn) {
-                openBtn.click();
-                opened++;
-                stateEl.textContent = `${opened}/${c.total}`;
-                await sleep(DELAY);
-            } else {
-                console.warn('[DFC] Кнопка открытия не найдена');
-                await sleep(DELAY);
-            }
-        }
-        await sleep(DELAY);
-    }
-    toast('AutoCase завершён');
-}
-
-function findCaseElement(name) {
-    if (!name) return null;
-    const all = $$('.case-card, .case-item, .case, [data-case], [data-case-id], [data-name]');
-    for (const el of all) {
-        const n = (el.dataset.case || el.dataset.caseId || el.dataset.name ||
-                   (el.querySelector('h3,h4,.title,.case-name')?.textContent) ||
-                   el.textContent || '').trim().toLowerCase();
-        if (n.includes(name.toLowerCase())) return el;
-    }
-    return null;
-}
-function findOpenButton() {
-    const sels = [
-        '#openCaseBtn', '.open-case-btn', '[data-action="open"]',
-        '.case-open-btn', '#caseOpenBtn', 'button.open-btn'
-    ];
-    for (const s of sels) {
-        const el = $(s);
-        if (el && !el.disabled) return el;
-    }
-    // fallback: any button with "открыть"
-    const all = $$('button');
-    for (const b of all) {
-        if (/открыть|open/i.test(b.textContent) && !b.disabled) return b;
-    }
-    return null;
-}
-
-/* ============================================================
-   SETTINGS MODALS
-   ============================================================ */
-function openSettings(action, btn) {
-    const isReg   = action === 'autoreg' || action === 'autoregcode';
-    const isCase  = action === 'autocase';
-
-    const title =
-        action === 'autoreg'     ? 'AutoReg — настройки' :
-        action === 'autoregcode' ? 'AutoReg + Code — настройки' :
-                                   'AutoCase — настройки';
-
-    let html = `<h3>${title}</h3>`;
-
-    if (isReg) {
-        const c = action === 'autoreg' ? state.cfg.autoReg : state.cfg.autoRegCode;
-        html += `
-            <div class="dfc-field">
-                <label>Сколько аккаунтов</label>
-                <input type="number" id="dfcSetCount" value="${c.count}" min="1">
+      <!-- AUTO -->
+      <div class="dv-page dv-hidden" data-page="auto">
+        <div class="dv-section">
+          <div class="dv-section-title">AutoCase</div>
+          <div class="dv-row">
+            <div>
+              <div class="dv-row-name">AutoCase</div>
+              <div class="dv-row-desc">Автоматическое открытие кейсов и домофонов</div>
             </div>
-            <div class="dfc-field">
-                <label>Шаблон ника (%s — 4 буквы, %n — 4 цифры)</label>
-                <input type="text" id="dfcSetPattern" value="${c.pattern}">
-            </div>
-        `;
-        if (action === 'autoregcode') {
-            html += `
-                <div class="dfc-field">
-                    <label>Код автора</label>
-                    <input type="text" id="dfcSetCode" value="${c.code}">
-                </div>
-            `;
-        }
-    }
-
-    if (isCase) {
-        const c = state.cfg.autoCase;
-        const cases = detectCases();
-        const opts = cases.map(n =>
-            `<option value="${n}" ${n === c.caseName ? 'selected' : ''}>${n}</option>`
-        ).join('');
-        html += `
-            <div class="dfc-field">
-                <label>Кейс</label>
-                <select id="dfcSetCase">${opts}</select>
-            </div>
-            <div class="dfc-field">
-                <label>Сколько за раз</label>
-                <input type="number" id="dfcSetPerBatch" value="${c.perBatch}" min="1">
-            </div>
-            <div class="dfc-field">
-                <label>Всего раз</label>
-                <input type="number" id="dfcSetTotal" value="${c.total}" min="1">
-            </div>
-        `;
-    }
-
-    html += `
-        <div class="dfc-modal-actions">
-            <button id="dfcSetCancel">Отмена</button>
-            <button class="primary" id="dfcSetOk">Сохранить</button>
+            <label class="dv-switch"><input type="checkbox" id="dvAutoToggle"><span class="dv-slider"></span></label>
+          </div>
+          <div id="dvAutoList"></div>
         </div>
-    `;
+      </div>
 
-    const m = document.createElement('div');
-    m.className = 'dfc-modal';
-    m.innerHTML = `<div class="dfc-modal-box">${html}</div>`;
-    document.body.appendChild(m);
+      <!-- RP -->
+      <div class="dv-page dv-hidden" data-page="rp">
+        <div class="dv-section">
+          <div class="dv-section-title">DomofonRP</div>
+          <div id="dvRpList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  `;
 
-    $('#dfcSetCancel', m).addEventListener('click', () => m.remove());
-    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(root);
 
-    $('#dfcSetOk', m).addEventListener('click', () => {
-        if (isReg) {
-            const c = action === 'autoreg' ? state.cfg.autoReg : state.cfg.autoRegCode;
-            c.count   = Math.max(1, parseInt($('#dfcSetCount', m).value)   || 1);
-            c.pattern = $('#dfcSetPattern', m).value || 'dq_%s%n';
-            if (action === 'autoregcode') {
-                c.code = ($('#dfcSetCode', m).value || DEFAULT_AUTHCODE).toUpperCase();
-            }
+  /* ================== ХЕЛПЕРЫ ================== */
+  const $ = (s, c) => (c || root).querySelector(s);
+
+  function toast(text, isErr) {
+    const t = document.createElement('div');
+    t.className = 'dv-toast' + (isErr ? ' dv-toast-err' : '');
+    t.textContent = text;
+    root.appendChild(t);
+    requestAnimationFrame(() => t.classList.add('dv-toast-in'));
+    setTimeout(() => { t.classList.remove('dv-toast-in'); setTimeout(() => t.remove(), 320); }, 2200);
+  }
+
+  function openModal(title, buildBody) {
+    const wrap = document.createElement('div');
+    wrap.className = 'dv-modal-wrap';
+    wrap.innerHTML = `
+      <div class="dv-modal">
+        <div class="dv-modal-head"><span>${title}</span><button class="dv-icon-btn dv-close">✕</button></div>
+        <div class="dv-modal-body"></div>
+      </div>`;
+    const body = wrap.querySelector('.dv-modal-body');
+    buildBody(body, () => wrap.remove());
+    wrap.querySelector('.dv-close').onclick = () => wrap.remove();
+    wrap.addEventListener('mousedown', e => { if (e.target === wrap) wrap.remove(); });
+    root.appendChild(wrap);
+    return wrap;
+  }
+
+  /* ================== ЗАГРУЗКА ================== */
+  const loader    = $('#dvLoader');
+  const keyScreen = $('#dvKeyScreen');
+  const supScreen = $('#dvSupportScreen');
+  const win       = $('#dvWin');
+
+  const steps = ['Инициализация…', 'Загрузка модулей…', 'Подключение визуалов…', 'Проверка ключа…', 'Готово'];
+  let progress = 0, stepIdx = 0;
+  const fill = $('#dvProgressFill'), pct = $('#dvPercent'), sub = $('#dvLoadSub');
+
+  const loadTimer = setInterval(() => {
+    progress += Math.random() * 11 + 4;
+    if (progress >= 100) { progress = 100; clearInterval(loadTimer); setTimeout(showKeyScreen, 420); }
+    fill.style.width = progress + '%';
+    pct.textContent = Math.floor(progress) + '%';
+    const ni = Math.min(Math.floor(progress / 21), steps.length - 1);
+    if (ni !== stepIdx) { stepIdx = ni; sub.textContent = steps[ni]; }
+  }, 135);
+
+  function showKeyScreen() {
+    loader.classList.add('dv-hide');
+    setTimeout(() => { keyScreen.classList.remove('dv-hide'); $('#dvKeyInput').focus(); }, 300);
+  }
+
+  /* ================== ПРОВЕРКА КЛЮЧА ================== */
+  const keyInput = $('#dvKeyInput'), keyErr = $('#dvKeyErr'), keyBtn = $('#dvKeyBtn');
+
+  function tryKey() {
+    const v = keyInput.value.trim().toLowerCase();
+    if (v === ACCESS_KEY) {
+      keyErr.textContent = '';
+      keyScreen.classList.add('dv-hide');
+      setTimeout(() => supScreen.classList.remove('dv-hide'), 300);
+    } else {
+      keyErr.textContent = 'Неверный ключ доступа';
+      keyInput.classList.add('dv-shake');
+      setTimeout(() => keyInput.classList.remove('dv-shake'), 420);
+    }
+  }
+  keyBtn.onclick = tryKey;
+  keyInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryKey(); });
+
+  /* ================== ПОДДЕРЖКА ================== */
+  $('#dvSupportBtn').onclick = () => { openCreatorPanel(); };
+  $('#dvSkipBtn').onclick    = () => { enterMain(); };
+
+  function enterMain() {
+    supScreen.classList.add('dv-hide');
+    setTimeout(() => { win.classList.remove('dv-hidden'); applyState(); }, 300);
+  }
+
+  /* ================== КРЕАТОРАМ ================== */
+  function openCreatorPanel() {
+    // если на сайте есть своя вкладка — кликаем её
+    const siteTab = document.querySelector('.tab-btn[data-tab="creator"]');
+    if (siteTab) { try { siteTab.click(); } catch (e) {} }
+
+    openModal('Креаторам ⭐', (body) => {
+      body.innerHTML = `
+        <h3>Ввести код автора</h3>
+        <p style="font-size:12px;color:#7f889c;margin:6px 0 14px;line-height:1.55;">
+          При вводе кода автора вы мгновенно получите от 100 000 до 1 000 000 💰,
+          а креатор получит +1 Creator Star!
+        </p>
+        <div class="dv-field">
+          <input type="text" id="authorCodeInput" class="dv-input"
+                 placeholder="КОД АВТОРА (НАПР: QWENIX)" style="text-transform:uppercase;">
+        </div>
+        <button class="dv-btn dv-btn-primary dv-btn-block" id="submitAuthorCodeBtn">ПОДДЕРЖАТЬ АВТОРА</button>
+        <div class="dv-msg" id="dvAuthorMsg"></div>
+      `;
+
+      const inp = body.querySelector('#authorCodeInput');
+      const msg = body.querySelector('#dvAuthorMsg');
+
+      body.querySelector('#submitAuthorCodeBtn').onclick = () => {
+        const code = (inp.value || '').trim().toUpperCase();
+        if (!code) { msg.className = 'dv-msg dv-msg-err'; msg.textContent = 'Введите код автора'; return; }
+        if (code !== AUTHOR_CODE) {
+          msg.className = 'dv-msg dv-msg-err';
+          msg.textContent = 'Неверный код автора';
+          inp.classList.add('dv-shake');
+          setTimeout(() => inp.classList.remove('dv-shake'), 420);
+          return;
         }
-        if (isCase) {
-            state.cfg.autoCase.caseName = $('#dfcSetCase', m).value;
-            state.cfg.autoCase.perBatch = Math.max(1, parseInt($('#dfcSetPerBatch', m).value) || 1);
-            state.cfg.autoCase.total    = Math.max(1, parseInt($('#dfcSetTotal', m).value)    || 1);
-        }
-        saveLocal();
-        refreshButtonStates(document);
-        m.remove();
-        toast('Настройки сохранены');
+
+        msg.className = 'dv-msg dv-msg-ok';
+        msg.textContent = 'Успешно! +1 Creator Star ⭐  Начислено 100 000–1 000 000 💰';
+
+        // через секунду — клик по профилю
+        setTimeout(() => {
+          const profileBtn = document.getElementById('openProfileBtn');
+          if (profileBtn) {
+            profileBtn.click();
+          } else {
+            toast('Профиль: asdasdasdasd');
+          }
+          setTimeout(enterMain, 700);
+        }, 1000);
+      };
     });
-}
+  }
 
-function refreshButtonStates(root) {
-    const r = root || document;
-    const b1 = $('.dfc-btn[data-action="autoreg"]', r);
-    const b2 = $('.dfc-btn[data-action="autoregcode"]', r);
-    const b3 = $('.dfc-btn[data-action="autocase"]', r);
-    if (b1 && !b1.classList.contains('running')) $('.state', b1).textContent = state.cfg.autoReg.count;
-    if (b2 && !b2.classList.contains('running')) $('.state', b2).textContent = state.cfg.autoRegCode.count;
-    if (b3 && !b3.classList.contains('running')) $('.state', b3).textContent = `×${state.cfg.autoCase.perBatch}`;
-}
+  $('#dvCreatorBtn').onclick = openCreatorPanel;
 
-/* ============================================================
-   RP TAB
-   ============================================================ */
-function detectCases() {
-    const found = new Set(DEFAULT_CASES);
-    const sels = ['.case-card', '.case-item', '.case', '[data-case]', '[data-case-id]', '.cases-grid > *'];
-    sels.forEach(s => {
-        $$(s).forEach(el => {
-            const n = el.dataset.case || el.dataset.caseId || el.dataset.name ||
-                      (el.querySelector('h3,h4,.title,.case-name')?.textContent) ||
-                      el.textContent || '';
-            const clean = n.trim().slice(0, 40);
-            if (clean) found.add(clean);
-        });
+  /* ================== СНЕЖИНКИ ================== */
+  const snowLayer = $('#dvSnow');
+  const MAX_FLAKES = 360;
+  let snowRAF = null, snowLast = 0, snowAcc = 0;
+
+  function spawnFlake() {
+    const f = document.createElement('div');
+    f.className = 'dv-flake';
+    f.textContent = Math.random() > 0.45 ? '❄' : '✻';
+    f.style.left = (Math.random() * 100) + 'vw';
+    f.style.fontSize = (8 + Math.random() * 16).toFixed(1) + 'px';
+    f.style.opacity = (0.3 + Math.random() * 0.6).toFixed(2);
+    f.style.color = Math.random() > 0.72 ? '#bfe9ff' : '#ffffff';
+    f.style.setProperty('--dx', ((Math.random() * 2 - 1) * 150).toFixed(0) + 'px');
+    f.style.setProperty('--rot', ((Math.random() * 2 - 1) * 560).toFixed(0) + 'deg');
+    f.style.animationDuration = (5 + Math.random() * 7).toFixed(2) + 's';
+    f.addEventListener('animationend', () => f.remove());
+    snowLayer.appendChild(f);
+  }
+
+  function snowTick(now) {
+    const dt = Math.min((now - snowLast) / 1000, 0.12);
+    snowLast = now;
+    snowAcc += state.snow.perSecond * dt;
+    while (snowAcc >= 1) {
+      snowAcc -= 1;
+      if (snowLayer.childElementCount < MAX_FLAKES) spawnFlake();
+    }
+    snowRAF = requestAnimationFrame(snowTick);
+  }
+
+  function startSnow() {
+    if (snowRAF) return;
+    snowLast = performance.now(); snowAcc = 0;
+    snowRAF = requestAnimationFrame(snowTick);
+  }
+
+  function stopSnow() {
+    if (snowRAF) cancelAnimationFrame(snowRAF);
+    snowRAF = null;
+    snowLayer.innerHTML = '';
+  }
+
+  /* ================== WATERMARK ================== */
+  const wm = $('#dvWatermark');
+  const wmTimeEl = $('#dvWmTime'), wmFpsEl = $('#dvWmFps');
+  const sep1 = $('#dvSep1'), sep2 = $('#dvSep2');
+  let curFps = 0, frames = 0, fpsLast = performance.now(), fpsRAF = null;
+
+  function fpsLoop(now) {
+    frames++;
+    if (now - fpsLast >= 500) {
+      curFps = Math.round(frames * 1000 / (now - fpsLast));
+      frames = 0; fpsLast = now;
+      updateWatermark();
+    }
+    fpsRAF = requestAnimationFrame(fpsLoop);
+  }
+  fpsRAF = requestAnimationFrame(fpsLoop);
+
+  const timeTimer = setInterval(() => {
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    wmTimeEl.textContent = 'Time ' + hh + ':' + mm;
+  }, 1000);
+
+  function updateWatermark() {
+    if (!state.watermark.enabled) { wm.classList.add('dv-hidden'); return; }
+    wm.classList.remove('dv-hidden');
+
+    const st = state.watermark.showTime;
+    const sf = state.watermark.showFps;
+
+    wmTimeEl.style.display = st ? '' : 'none';
+    wmFpsEl.style.display  = sf ? '' : 'none';
+    wmFpsEl.textContent    = 'FPS ' + curFps;
+
+    const d = new Date();
+    wmTimeEl.textContent = 'Time ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+
+    sep1.style.display = st ? '' : 'none';
+    sep2.style.display = (st && sf) ? '' : 'none';
+  }
+
+  wm.addEventListener('contextmenu', e => { e.preventDefault(); openWatermarkSettings(); });
+
+  /* ================== МОДАЛКА: СНЕЖИНКИ ================== */
+  function openSnowSettings() {
+    openModal('Настройки снежинок', (body) => {
+      body.innerHTML = `
+        <div class="dv-field">
+          <label>Снежинок в секунду: <b id="dvSnowVal">${state.snow.perSecond}</b></label>
+          <input type="range" min="5" max="100" step="1" value="${state.snow.perSecond}" id="dvSnowRange" class="dv-range">
+        </div>
+        <div class="dv-hint">Снежинки падают рандомно по всему экрану.<br>Максимум одновременно: ${MAX_FLAKES}.</div>
+      `;
+      const range = body.querySelector('#dvSnowRange');
+      const val   = body.querySelector('#dvSnowVal');
+      range.oninput = () => {
+        state.snow.perSecond = +range.value;
+        val.textContent = range.value;
+        $('#dvSnowInfo').textContent = range.value + '/сек';
+        save();
+      };
     });
-    return Array.from(found);
-}
+  }
 
-function detectDomofons() {
-    const found = new Set(DEFAULT_DOMOFONS);
-    const sels = ['.domofon', '.domofon-card', '[data-domofon]', '[data-domofon-id]', '.rp-item'];
-    sels.forEach(s => {
-        $$(s).forEach(el => {
-            const n = el.dataset.domofon || el.dataset.domofonId || el.dataset.name ||
-                      (el.querySelector('h3,h4,.title,.name')?.textContent) ||
-                      el.textContent || '';
-            const clean = n.trim().slice(0, 40);
-            if (clean) found.add(clean);
-        });
+  /* ================== МОДАЛКА: WATERMARK ================== */
+  function openWatermarkSettings() {
+    openModal('Настройки WaterMark', (body) => {
+      body.innerHTML = `
+        <div class="dv-sub-row">
+          <span>Показывать Time</span>
+          <input type="checkbox" class="dv-check" id="dvWmTimeChk" ${state.watermark.showTime ? 'checked' : ''}>
+        </div>
+        <div class="dv-sub-row">
+          <span>Показывать FPS</span>
+          <input type="checkbox" class="dv-check" id="dvWmFpsChk" ${state.watermark.showFps ? 'checked' : ''}>
+        </div>
+        <div class="dv-hint">Dynamic Island появляется по центру сверху.<br>ПКМ по нему — снова открыть эти настройки.</div>
+      `;
+      body.querySelector('#dvWmTimeChk').onchange = e => { state.watermark.showTime = e.target.checked; save(); updateWatermark(); };
+      body.querySelector('#dvWmFpsChk').onchange  = e => { state.watermark.showFps  = e.target.checked; save(); updateWatermark(); };
     });
-    return Array.from(found);
-}
+  }
 
-function renderRP(root) {
-    const list = $('#dfcRpList', root);
-    if (!list) return;
-    list.innerHTML = '';
-    const domofons = detectDomofons();
+  /* ================== AUTO ================== */
+  const autoList = $('#dvAutoList');
 
-    domofons.forEach(name => {
-        const img = state.cfg.rp[name];
+  function renderAuto() {
+    autoList.innerHTML = '';
+    AUTO_GROUPS.forEach(g => {
+      const t = document.createElement('div');
+      t.style.cssText = 'font-size:10.5px;font-weight:900;letter-spacing:1.4px;text-transform:uppercase;color:#5c6478;margin:14px 0 8px 3px;';
+      t.textContent = g.title;
+      autoList.appendChild(t);
+
+      g.items.forEach(name => {
+        if (state.auto.items[name] === undefined) state.auto.items[name] = false;
         const row = document.createElement('div');
-        row.className = 'dfc-rp-item';
-        row.innerHTML = `
-            ${img ? `<img class="preview" src="${img}">` : `<div class="preview"></div>`}
-            <div class="name">${name}</div>
-            <button class="dfc-mini" data-load="${name}">Загрузить</button>
-            ${img ? `<button class="dfc-mini danger" data-clear="${name}">✕</button>` : ''}
-        `;
-        list.appendChild(row);
+        row.className = 'dv-sub-row';
+        row.innerHTML = `<span>${name}</span>`;
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.className = 'dv-check';
+        chk.checked = !!state.auto.items[name];
+        chk.onchange = () => { state.auto.items[name] = chk.checked; save(); };
+        row.appendChild(chk);
+        autoList.appendChild(row);
+      });
+    });
+  }
+
+  $('#dvAutoToggle').onchange = e => {
+    state.auto.enabled = e.target.checked;
+    save();
+    toast(state.auto.enabled ? 'AutoCase включён' : 'AutoCase выключен');
+  };
+
+  /* ================== RP ================== */
+  const rpList = $('#dvRpList');
+
+  function renderRP() {
+    rpList.innerHTML = '';
+    RP_DOMOFONS.forEach(name => {
+      const tex = state.rp.textures[name];
+      const item = document.createElement('div');
+      item.className = 'dv-rp-item' + (state.rp.selected === name ? ' dv-rp-active' : '');
+      item.innerHTML = `
+        <div class="dv-rp-thumb">${tex ? `<img src="${tex}" alt="">` : '🧊'}</div>
+        <div class="dv-rp-meta">
+          <div class="dv-rp-name">${name}</div>
+          <div class="dv-rp-sub">${tex ? 'Текстура загружена' : 'Текстура не загружена'}</div>
+        </div>
+        <button class="dv-btn dv-btn-sm dv-rp-load">Загрузить текстуру</button>
+      `;
+
+      item.addEventListener('click', e => {
+        if (e.target.closest('.dv-rp-load')) return;
+        state.rp.selected = name;
+        save(); renderRP();
+        toast('Выбран: ' + name);
+      });
+
+      item.querySelector('.dv-rp-load').addEventListener('click', e => {
+        e.stopPropagation();
+        pickTexture(name);
+      });
+
+      rpList.appendChild(item);
+    });
+  }
+
+  function pickTexture(name) {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*';
+    inp.onchange = () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = () => {
+        state.rp.textures[name] = r.result;
+        state.rp.selected = name;
+        save(); renderRP();
+        toast('Текстура загружена: ' + name);
+      };
+      r.readAsDataURL(f);
+    };
+    inp.click();
+  }
+
+  /* ================== ВКЛАДКИ ================== */
+  root.querySelectorAll('.dv-tab').forEach(tab => {
+    tab.onclick = () => {
+      root.querySelectorAll('.dv-tab').forEach(t => t.classList.remove('dv-active'));
+      tab.classList.add('dv-active');
+      const target = tab.dataset.tab;
+      root.querySelectorAll('.dv-page').forEach(p => {
+        p.classList.toggle('dv-hidden', p.dataset.page !== target);
+      });
+    };
+  });
+
+  /* ================== ПЕРЕТАСКИВАНИЕ ОКНА ================== */
+  (function makeDraggable() {
+    const handle = $('#dvHead');
+    let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+
+    handle.addEventListener('mousedown', e => {
+      if (e.target.closest('button')) return;
+      const r = win.getBoundingClientRect();
+      dragging = true;
+      sx = e.clientX; sy = e.clientY;
+      ox = r.left; oy = r.top;
+      win.style.right = 'auto';
+      win.style.left = ox + 'px';
+      win.style.top  = oy + 'px';
+      win.style.animation = 'none';
+      e.preventDefault();
     });
 
-    list.querySelectorAll('[data-load]').forEach(b => {
-        b.addEventListener('click', () => {
-            const fi = $('#dfcFileTex', root);
-            fi.dataset.domofon = b.dataset.load;
-            fi.click();
-        });
-    });
-    list.querySelectorAll('[data-clear]').forEach(b => {
-        b.addEventListener('click', () => {
-            delete state.cfg.rp[b.dataset.clear];
-            saveLocal();
-            renderRP(root);
-        });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      let nx = ox + e.clientX - sx;
+      let ny = oy + e.clientY - sy;
+      nx = Math.max(0, Math.min(window.innerWidth - 80, nx));
+      ny = Math.max(0, Math.min(window.innerHeight - 40, ny));
+      win.style.left = nx + 'px';
+      win.style.top  = ny + 'px';
     });
 
-    applyRPTextures();
-}
+    document.addEventListener('mouseup', () => { dragging = false; });
+  })();
 
-function applyRPTextures() {
-    // try to apply saved textures to matching domofon images on the page
-    Object.entries(state.cfg.rp).forEach(([name, data]) => {
-        const imgs = $$('img');
-        imgs.forEach(im => {
-            const alt = (im.alt || '').toLowerCase();
-            const src = (im.src || '').toLowerCase();
-            const n   = name.toLowerCase();
-            if (alt.includes(n) || src.includes(n.replace(/\s+/g, ''))) {
-                im.src = data;
-            }
-        });
-    });
-}
+  /* ================== ПКМ ПО РЯДАМ ================== */
+  $('#dvSnowRow').addEventListener('contextmenu', e => { e.preventDefault(); openSnowSettings(); });
+  $('#dvWmRow').addEventListener('contextmenu',   e => { e.preventDefault(); openWatermarkSettings(); });
 
-/* ============================================================
-   SAVE / LOAD CONFIG FILE
-   ============================================================ */
-function saveConfigFile() {
-    const data = JSON.stringify(state.cfg, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
+  /* ================== ПРИМЕНЕНИЕ СОСТОЯНИЯ ================== */
+  const snowToggle = $('#dvSnowToggle');
+  const wmToggle   = $('#dvWmToggle');
+  const autoToggle = $('#dvAutoToggle');
+
+  snowToggle.onchange = e => {
+    state.snow.enabled = e.target.checked;
+    save();
+    state.snow.enabled ? startSnow() : stopSnow();
+    toast(state.snow.enabled ? 'Снежинки включены' : 'Снежинки выключены');
+  };
+
+  wmToggle.onchange = e => {
+    state.watermark.enabled = e.target.checked;
+    save(); updateWatermark();
+  };
+
+  function applyState() {
+    snowToggle.checked = state.snow.enabled;
+    wmToggle.checked   = state.watermark.enabled;
+    autoToggle.checked = state.auto.enabled;
+    $('#dvSnowInfo').textContent = state.snow.perSecond + '/сек';
+
+    state.snow.enabled ? startSnow() : stopSnow();
+    updateWatermark();
+
+    renderAuto();
+    renderRP();
+  }
+
+  /* ================== КОНФИГ ================== */
+  $('#dvSaveCfg').onclick = () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'domofon-cheat-config.json';
+    a.download = 'domofon-visuals-config.json';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(a.href);
-    toast('Конфиг сохранён в файл');
-}
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('Конфиг сохранён');
+  };
 
-/* ============================================================
-   TOAST
-   ============================================================ */
-function toast(msg, isError) {
-    const t = document.createElement('div');
-    t.textContent = msg;
-    Object.assign(t.style, {
-        position: 'fixed', bottom: '24px', right: '24px', zIndex: 2147483647,
-        padding: '11px 16px', borderRadius: '10px',
-        background: isError ? 'linear-gradient(90deg,#ff5577,#ff2255)' : 'linear-gradient(90deg,#7a4dff,#4dc9ff)',
-        color: '#fff', fontWeight: '700', fontSize: '12px', letterSpacing: '.5px',
-        boxShadow: '0 10px 30px rgba(0,0,0,.5)', transition: 'opacity .3s', opacity: '0'
-    });
-    document.body.appendChild(t);
-    requestAnimationFrame(() => t.style.opacity = '1');
-    setTimeout(() => {
-        t.style.opacity = '0';
-        setTimeout(() => t.remove(), 320);
-    }, 1800);
-}
+  $('#dvLoadCfg').onclick = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.json,application/json';
+    inp.onchange = () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = () => {
+        try {
+          const data = JSON.parse(r.result);
+          state = deepMerge(JSON.parse(JSON.stringify(DEFAULT_STATE)), data);
+          if (!state.rp.textures) state.rp.textures = {};
+          save();
+          applyState();
+          toast('Конфиг загружен');
+        } catch (err) {
+          toast('Ошибка чтения конфига', true);
+        }
+      };
+      r.readAsText(f);
+    };
+    inp.click();
+  };
 
-/* ============================================================
-   DESTROY
-   ============================================================ */
-function destroy() {
-    stopUnban();
-    state.stopFlag = true;
-    const r = document.getElementById('dfc-root');
-    if (r) r.remove();
-    const s = document.getElementById('dfc-splash');
-    if (s) s.remove();
-    window.__DFC__ = null;
-}
+  /* ================== ЗАКРЫТИЕ ================== */
+  $('#dvClose').onclick = () => {
+    stopSnow();
+    root.classList.add('dv-hidden');
+    toast('Панель скрыта (обнови страницу для возврата)');
+  };
 
-/* ============================================================
-   INIT
-   ============================================================ */
-(async function init() {
-    // inject CSS
-    const style = document.createElement('style');
-    style.id = 'dfc-style';
-    style.textContent = CSS;
-    document.head.appendChild(style);
+  /* ================== CLEANUP ================== */
+  window.__DOMOFON_VISUALS__ = {
+    destroy() {
+      clearInterval(loadTimer);
+      clearInterval(timeTimer);
+      if (snowRAF) cancelAnimationFrame(snowRAF);
+      if (fpsRAF) cancelAnimationFrame(fpsRAF);
+      root.remove();
+      window.__DOMOFON_VISUALS__ = null;
+      console.log('%c[Domofon Visuals] выключено', 'color:#7c5cff;font-weight:bold');
+    },
+    state
+  };
 
-    await showSplash();
-    buildPanel();
-
-    window.__DFC__ = { destroy, state };
-    console.log('%c[DOMOFON CHEAT] loaded', 'color:#b389ff;font-weight:bold;font-size:14px');
-})();
-
+  console.log('%c[Domofon Visuals] %cзагружено · ключ: cfgdqmjrka',
+    'color:#7c5cff;font-weight:bold', 'color:#22d3ee');
 })();
